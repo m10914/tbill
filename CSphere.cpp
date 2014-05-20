@@ -39,11 +39,13 @@ HRESULT CSpherePrimitive::Create( IDirect3DDevice9* pd3dDevice, D3DXVECTOR3 posi
 	float angleTheta = 0;
 	float stepx = D3DX_PI*2/(float)segmentX;
 	float stepy = D3DX_PI/(float)(segmentY-1);
+	float texstepX = 1.0f / (float)segmentX;
+	float texstepY = 1.0f / (float)segmentY;
 
 	//top vertex
 	m_Vertices.Add(VERTEX(position + D3DXVECTOR3(0,radius,0), D3DXVECTOR3(0,1,0), D3DXVECTOR2(0,0)));
 
-	for(i = 0; i < segmentX; i++)
+	for(i = 0; i <= segmentX; i++)
 	{
 		for(j = 1; j < segmentY-1; j++) //all except top and bottom
 		{
@@ -55,50 +57,50 @@ HRESULT CSpherePrimitive::Create( IDirect3DDevice9* pd3dDevice, D3DXVECTOR3 posi
 			m_Vertices.Add(VERTEX(
 				position + vec,
 				norm,
-				D3DXVECTOR2(0,0)));
+				D3DXVECTOR2( texstepX*i, texstepY*j )));
 		}
 	}
 
 	//bottom vertex
 	m_Vertices.Add(VERTEX(position + D3DXVECTOR3(0,-radius,0), D3DXVECTOR3(0,-1,0), D3DXVECTOR2(1,1)));
 
+	int stride = segmentY-2;
 	NumOfVertices = m_Vertices.GetSize();
-	NumOfFaces = segmentX * 2 + (segmentY-2) * 2 * segmentX;
+	NumOfFaces = segmentX * 2 + (stride-1) * 2 * segmentX;
 	NumOfIndices = NumOfFaces*3;
 
 	// construct top and bottom
-	int stride = segmentY-2;
+	
 	for(i = 0; i < segmentX; i++)
 	{
 		//top
-		m_Indices.Add(0);
 		m_Indices.Add(stride*i + 1);
-		if(i == segmentX-1) m_Indices.Add(1);
-		else m_Indices.Add(stride*(i+1) + 1);
+		m_Indices.Add(0);
+		m_Indices.Add(stride*(i+1) + 1);
 
 		//bottom
 		m_Indices.Add(NumOfVertices-1);
 		m_Indices.Add(stride*i + stride);
-		if(i == segmentX-1) m_Indices.Add(stride);
-		else m_Indices.Add(stride*(i+1) + stride);
+		m_Indices.Add(stride*(i+1) + stride);
 	}
 	// construct what's left
 	for(i = 0; i < segmentX; i++)
 	{
 		for(j = 0; j < stride-1; j++)
 		{
-			int nexti = i == segmentX-1 ? 0 : i+1;
+			int nexti = i+1;
 
 			m_Indices.Add(1 + stride*i + j);
-			m_Indices.Add(1 + stride*i + j + 1);
 			m_Indices.Add(1 + stride*nexti + j);
+			m_Indices.Add(1 + stride*i + j + 1);
 
-			m_Indices.Add(1 + stride*nexti + j);
 			m_Indices.Add(1 + stride*i + j + 1);
+			m_Indices.Add(1 + stride*nexti + j);
 			m_Indices.Add(1 + stride*nexti + j + 1);
 		}
 	}
 
+	int size = m_Indices.GetSize();
 
 	//----------------------------
 	// Create vertex buffer

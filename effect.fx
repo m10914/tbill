@@ -35,9 +35,9 @@ Texture samplers
 sampler DiffTextureSampler = sampler_state
 {
 	Texture = <g_DiffTexture>; 
-    MipFilter = LINEAR;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
+    MipFilter = NONE;
+    MinFilter = NONE;
+    MagFilter = NONE;
 };
 sampler BumpTextureSampler = sampler_state
 {
@@ -143,7 +143,7 @@ void FragmentShader( float2 vTexCoord: TEXCOORD0,
 
 /*
 =============================================================================
-FragmentShader
+TestFragmentShader
 
 does nothing
 =============================================================================
@@ -156,7 +156,8 @@ void TestFragmentShader( float2 vTexCoord: TEXCOORD0,
                out float4 vColorOut: COLOR0)
 {  
 
-	vColorOut = float4(1,0.2,0.3,1);
+	float4 vDiffuse = tex2D( DiffTextureSampler, float2(vTexCoord.x, vTexCoord.y) );
+	vColorOut = vDiffuse;
 }
 
 /*

@@ -46,6 +46,8 @@ WCHAR g_strFileSaveMessage[MAX_PATH] = {0}; // Text indicating file write succes
 // SCENE
 CPlanePrimitive g_PlaneObj;
 CSpherePrimitive g_SphereObj;
+IDirect3DTexture9* g_PlaneTexture;
+IDirect3DTexture9* g_SphereTexture;
 
 
 //--------------------------------------------------------------------------------------
@@ -116,18 +118,21 @@ Consists of basic 3d program pipeline: Create -> FrameMove -> Render -> Destroy
 
 void MyCreateScene( IDirect3DDevice9* pd3dDevice )
 {
+	HRESULT hr;
+
 	//create plane
-	g_PlaneObj.Create(pd3dDevice, D3DXVECTOR3(0,0,0), D3DXVECTOR2(10,10));
-	g_SphereObj.Create(pd3dDevice, D3DXVECTOR3(0,0,0), 10, 25, 25);
+	g_PlaneObj.Create(pd3dDevice, D3DXVECTOR3(0,-10,0), D3DXVECTOR2(150,150));
+	g_SphereObj.Create(pd3dDevice, D3DXVECTOR3(0,0,0), 10, 100, 100);
+
+	//create textures
+	D3DXCreateTextureFromFile( pd3dDevice, L"Assets/ball_albedo.png", &g_SphereTexture );
+	D3DXCreateTextureFromFile( pd3dDevice, L"Assets/pooltable.png", &g_PlaneTexture );	
 }
 
 
 
 void MyRenderScene(IDirect3DDevice9* pd3dDevice)
 {
-	pd3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
-	pd3dDevice->SetRenderState(D3DRS_FILLMODE, D3DFILL_WIREFRAME);
-
 	HRESULT hr;
 	UINT cPasses, iPass;
 	
@@ -145,19 +150,32 @@ void MyRenderScene(IDirect3DDevice9* pd3dDevice)
 
     V( g_pEffect->SetMatrix( g_hWorldViewProjection, &mWorldViewProjection ) );
     V( g_pEffect->SetMatrix( g_hWorld, &mWorld ) );
+	V( g_pEffect->SetValue( g_hEyePosition, g_Camera.GetEyePt(), sizeof( D3DXVECTOR3 ) ) );
+	V( g_pEffect->SetTechnique( g_Technnique ) );
 
 
 	//-----------------------------------
 	// first render as deferred
 
-	V( g_pEffect->SetValue( g_hEyePosition, g_Camera.GetEyePt(), sizeof( D3DXVECTOR3 ) ) );
-	V( g_pEffect->SetTechnique( g_Technnique ) );
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_SphereTexture));
+
 	V( g_pEffect->Begin( &cPasses, 0 ) );
 	V( g_pEffect->BeginPass( 0 ) );
 	
 	// draw scene objects
-	//g_PlaneObj.DrawPrimitive( pd3dDevice );
 	g_SphereObj.DrawPrimitive( pd3dDevice );
+
+	V( g_pEffect->EndPass() );	
+	V( g_pEffect->End() );
+
+
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_PlaneTexture));
+
+	V( g_pEffect->Begin( &cPasses, 0 ) );
+	V( g_pEffect->BeginPass( 0 ) );
+	
+	// draw scene objects
+	g_PlaneObj.DrawPrimitive( pd3dDevice );
 
 	V( g_pEffect->EndPass() );	
 	V( g_pEffect->End() );
@@ -194,13 +212,17 @@ void MyRenderText()
 
 void MyFrameMove(float fElapsedTime)
 {
-
+	g_Camera.FrameMove( fElapsedTime );
 }
+
 
 void MyDestroyScene()
 {
 	g_PlaneObj.Destroy();
 	g_SphereObj.Destroy();
+
+	SAFE_RELEASE( g_PlaneTexture );
+	SAFE_RELEASE( g_SphereTexture );
 }
 
 
@@ -516,9 +538,6 @@ HRESULT CALLBACK OnResetDevice( IDirect3DDevice9* pd3dDevice,
 //--------------------------------------------------------------------------------------
 void CALLBACK OnFrameMove( double fTime, float fElapsedTime, void* pUserContext )
 {
-    // Update the camera's position based on user input 
-    g_Camera.FrameMove( fElapsedTime );
-
 	MyFrameMove(fElapsedTime);
 }
 
