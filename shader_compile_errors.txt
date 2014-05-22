@@ -1,0 +1,10 @@
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(118,46): warning X3206: implicit truncation of vector type
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(146,26): warning X3206: 'dot': implicit truncation of vector type
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(147,44): warning X3206: implicit truncation of vector type
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(150,16): warning X3206: implicit truncation of vector type
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(193,17): warning X3206: 'mul': implicit truncation of vector type
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(193,12): warning X3206: implicit truncation of vector type
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(195,12): warning X3206: implicit truncation of vector type
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(218,47): warning X3206: implicit truncation of vector type
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(219,44): warning X3206: implicit truncation of vector type
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\effect.fx(252,28): error X3018: invalid subscript 'WorldPos'
