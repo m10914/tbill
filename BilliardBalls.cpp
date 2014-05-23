@@ -21,6 +21,8 @@ Based on MeshFromOBJ sample from DirectX SDK 2009.
 #include "Formats.h"
 #include "CPlane.h"
 #include "CSphere.h"
+#include "Lights.h"
+
 #pragma warning(default: 4995)
 
 //#define DEBUG_VS   // Uncomment this line to debug vertex shaders 
@@ -33,13 +35,17 @@ Based on MeshFromOBJ sample from DirectX SDK 2009.
 //--------------------------------------------------------------------------------------
 ID3DXFont*                  g_pFont = NULL;          // Font for drawing text
 ID3DXSprite*                g_pTextSprite = NULL;    // Sprite for batching draw text calls
-ID3DXEffect*                g_pEffect = NULL;        // D3DX effect interface
 CModelViewerCamera          g_Camera;                // A model viewing camera
 CDXUTDialogResourceManager  g_DialogResourceManager; // manager for shared resources of dialogs
 CD3DSettingsDlg             g_SettingsDlg;          // Device settings dialog
 CDXUTDialog                 g_HUD;                   // dialog for standard controls
 CDXUTDialog                 g_SampleUI;              // dialog for sample specific controls
 LPDIRECT3DDEVICE9			g_pd3dDevice = NULL;
+
+LPDIRECT3DVERTEXDECLARATION9	quaddecl = NULL;
+
+ID3DXEffect*                g_pEffect = NULL;        // D3DX effect interface
+ID3DXEffect*				g_pShadowEffect = NULL;
 
 WCHAR g_strFileSaveMessage[MAX_PATH] = {0}; // Text indicating file write success/failure
 
@@ -56,31 +62,66 @@ IDirect3DTexture9* g_SphereTexture;
 IDirect3DTexture9** g_SkyBoxTextures;
 IDirect3DCubeTexture9* g_CubeMapTexture;
 
+//render targets
+LPDIRECT3DTEXTURE9 g_RTAlbedo = NULL;
+LPDIRECT3DTEXTURE9 g_RTNormals = NULL;
+LPDIRECT3DTEXTURE9 g_RTDepth = NULL;
+LPDIRECT3DTEXTURE9 g_RTScene = NULL;
+LPDIRECT3DSURFACE9 g_SurfaceAlbedo = NULL;
+LPDIRECT3DSURFACE9 g_SurfaceNormal = NULL;
+LPDIRECT3DSURFACE9 g_SurfaceDepth = NULL;
+LPDIRECT3DSURFACE9 g_SurfaceScene = NULL;
+
+LPDIRECT3DSURFACE9 g_pDepthStencil = NULL;
+
+// light sources
+DXDirectionalLight directionallights[] =
+{
+	DXDirectionalLight(D3DXCOLOR(1, 1, 1, 1), D3DXVECTOR4(-100, 100, 50, 1)),
+	DXDirectionalLight(D3DXCOLOR(1, 1, 1, 1), D3DXVECTOR4(-100, 100, 50, 1)),
+	DXDirectionalLight(D3DXCOLOR(1, 1, 1, 1), D3DXVECTOR4(-100, 100, 50, 1)),
+};
+static const int NUM_DIRECTIONAL_LIGHTS = sizeof(directionallights) / sizeof(directionallights[0]);
 
 
 //--------------------------------------------------------------------------------------
 // Effect parameter handles
 //--------------------------------------------------------------------------------------
 
+//---------------------------
+// main effect
+
 //matrices
 D3DXHANDLE                  g_hWorld = NULL;
+D3DXHANDLE                  g_hWorldInv = NULL;
 D3DXHANDLE                  g_hViewProjection = NULL;
+D3DXHANDLE                  g_hViewProjectionInv = NULL;
 D3DXHANDLE                  g_hView = NULL;
 D3DXHANDLE                  g_hWorldView = NULL;
+D3DXHANDLE                  g_hLightViewProj = NULL;
+
 
 //vars
 D3DXHANDLE					g_hEyePosition = NULL;
 D3DXHANDLE                  g_hLightPosition = NULL;
+D3DXHANDLE                  g_hLightColor = NULL;
 
 //textures
-D3DXHANDLE                  g_hDiffTexture = NULL;
-D3DXHANDLE                  g_hSpecTexture = NULL;
-D3DXHANDLE                  g_hBumpTexture = NULL;
+D3DXHANDLE                  g_hDiffTexture = NULL; //or albedo
+D3DXHANDLE                  g_hSpecTexture = NULL; //or depth
+D3DXHANDLE                  g_hBumpTexture = NULL; //or normal
+D3DXHANDLE                  g_hShadowTexture = NULL;
 
 //techniques
 D3DXHANDLE					g_DefaultTechnique;
 D3DXHANDLE					g_EnvMapTechnique;
 D3DXHANDLE					g_PlainTechnique;
+D3DXHANDLE					g_DeferredTechnique;
+D3DXHANDLE					g_DeferredDirectionalTechnique;
+
+
+//------------------------------
+// shadow mapping
 
 
 //--------------------------------------------------------------------------------------
@@ -96,22 +137,27 @@ D3DXHANDLE					g_PlainTechnique;
 //--------------------------------------------------------------------------------------
 
 
-// actual application
+// creation
 void MyCreateScene();
+void MyCreateRenderTargets();
+
 
 //rendering
 
 void MyRenderSceneIntoCubeMap();
-void MyRenderText();
+
+void MyRenderShadows();
+void MyRenderShadowCasters(LPD3DXEFFECT effect);
+
 void MyRenderScene();
 
 void MyRenderRoom();
 void MyRenderPlane();
 void MyRenderSphere();
-
 void MyRenderOneWall();
 
-void MyRenderFullscreen();
+void MyRenderText();
+void MyRenderFullscreen(LPDIRECT3DTEXTURE9 texture);
 
 
 //fm
@@ -123,7 +169,10 @@ void MyDestroyScene();
 
 
 // framework stuff
+float* GetFullscreenQuad();
+
 void InitApp();
+HRESULT LoadShaderFromFile(LPCTSTR path, LPD3DXEFFECT* effect);
 bool CALLBACK IsDeviceAcceptable( D3DCAPS9* pCaps, D3DFORMAT AdapterFormat, D3DFORMAT BackBufferFormat, bool bWindowed,
                                   void* pUserContext );
 bool CALLBACK ModifyDeviceSettings( DXUTDeviceSettings* pDeviceSettings, void* pUserContext );
@@ -156,6 +205,15 @@ void MyCreateScene()
 {
 	HRESULT hr;
 
+	D3DVERTEXELEMENT9 elem[] =
+	{
+		{ 0, 0, D3DDECLTYPE_FLOAT4, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITIONT, 0 },
+		{ 0, 16, D3DDECLTYPE_FLOAT2, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 0 },
+		D3DDECL_END()
+	};
+	V(g_pd3dDevice->CreateVertexDeclaration(elem, &quaddecl));
+
+
 	//create plane
 	g_PlaneObj.Create(g_pd3dDevice, D3DXVECTOR3(0,-10,0), D3DXVECTOR2(150,150));
 	g_SphereObj.Create(g_pd3dDevice, D3DXVECTOR3(0,0,0), 10, 100, 100);
@@ -182,6 +240,55 @@ void MyCreateScene()
                                         D3DPOOL_DEFAULT,
 										&g_CubeMapTexture,
                                         NULL ) );
+
+	MyCreateRenderTargets();
+
+	//create shadow maps
+	for( int i = 0; i < NUM_DIRECTIONAL_LIGHTS; ++i )
+		directionallights[i].CreateShadowMap(g_pd3dDevice, DXLight::Dynamic, 512);
+}
+
+
+/*
+=================================================================
+Creates additional render targets for deferred shading
+=================================================================
+*/
+void MyCreateRenderTargets()
+{
+	HRESULT hr;
+
+	SAFE_RELEASE(g_RTAlbedo);
+	SAFE_RELEASE(g_RTScene);
+	SAFE_RELEASE(g_RTDepth);
+	SAFE_RELEASE(g_RTNormals);
+	SAFE_RELEASE(g_SurfaceAlbedo);
+	SAFE_RELEASE(g_SurfaceNormal);
+	SAFE_RELEASE(g_SurfaceDepth);
+	SAFE_RELEASE(g_SurfaceScene);
+
+	//create render target textures
+	V(g_pd3dDevice->CreateTexture(screenSize.x, screenSize.y, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &g_RTAlbedo, NULL));
+	V(g_pd3dDevice->CreateTexture(screenSize.x, screenSize.y, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A16B16G16R16F, D3DPOOL_DEFAULT, &g_RTScene, NULL));
+	V(g_pd3dDevice->CreateTexture(screenSize.x, screenSize.y, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A16B16G16R16F, D3DPOOL_DEFAULT, &g_RTNormals, NULL));
+	V(g_pd3dDevice->CreateTexture(screenSize.x, screenSize.y, 1, D3DUSAGE_RENDERTARGET, D3DFMT_R32F, D3DPOOL_DEFAULT, &g_RTDepth, NULL));
+
+	//get surfaces
+	V(g_RTAlbedo->GetSurfaceLevel(0, &g_SurfaceAlbedo));
+	V(g_RTNormals->GetSurfaceLevel(0, &g_SurfaceNormal));
+	V(g_RTDepth->GetSurfaceLevel(0, &g_SurfaceDepth));
+	V(g_RTScene->GetSurfaceLevel(0, &g_SurfaceScene));
+
+	//create depth-stencil surface
+	DXUTDeviceSettings d3dSettings = DXUTGetDeviceSettings();
+    V( g_pd3dDevice->CreateDepthStencilSurface( screenSize.x,
+                                                screenSize.y,
+                                                D3DFMT_D24S8,
+                                                D3DMULTISAMPLE_NONE,
+                                                0,
+                                                TRUE,
+                                                &g_pDepthStencil,
+                                                NULL ) );
 }
 
 
@@ -190,192 +297,240 @@ void MyCreateScene()
 ======================================================================
 Main rendering function
 
-Launches all render in proper way
+Launches all rendering techniques in proper order.
 ======================================================================
 */
 void MyRenderScene()
 {
 	HRESULT hr;
-	
-	//----------------------------------
-	// first render scene into cubemap texture
 
-	// get matrices from camera, setup
+	LPDIRECT3DSURFACE9 pOldDS = NULL;
+    if( SUCCEEDED( g_pd3dDevice->GetDepthStencilSurface( &pOldDS ) ) )
+		g_pd3dDevice->SetDepthStencilSurface( g_pDepthStencil );
+
+
+	//-------------------------------------------------------------
+	// SHADOWS first
+
+	MyRenderShadows();
+
+
+	// prepair matrices
 	D3DXMATRIXA16 mWorld;
 	D3DXMatrixIdentity(&mWorld);
-
 
 	D3DXMATRIXA16 mView = *g_Camera.GetViewMatrix();
     D3DXMATRIXA16 mViewProjection = mView * *g_Camera.GetProjMatrix();
 	D3DXMATRIXA16 mWorldView = mWorld * mView;
+	D3DXMATRIXA16 mViewProjectionInv;
+	D3DXMatrixInverse(&mViewProjectionInv, NULL, &mViewProjection);
 
 	//setup some common variables
 	V( g_pEffect->SetMatrix( g_hViewProjection, &mViewProjection ) );
+	V( g_pEffect->SetMatrix( g_hViewProjectionInv, &mViewProjectionInv ) );
 	V( g_pEffect->SetMatrix( g_hView, &mView ) );
 	V( g_pEffect->SetMatrix( g_hWorldView, &mWorldView));
   
 	V( g_pEffect->SetValue( g_hEyePosition, g_Camera.GetEyePt(), sizeof( D3DXVECTOR3 ) ) );
-	V( g_pEffect->SetValue( g_hLightPosition, D3DXVECTOR3(100,100,-100), sizeof( D3DXVECTOR3 ) ) );
+
 	
 
-	//---------------------------------
-	// Render!
+	//-------------------------------------------------------------
+	// DEFERRED
 
-	// room
-	V( g_pEffect->SetTechnique( g_PlainTechnique ) );
-	MyRenderRoom();
+	LPDIRECT3DSURFACE9	oldsurface = NULL;
+	g_pd3dDevice->GetRenderTarget(0, &oldsurface);
+
+	hr = g_pd3dDevice->SetRenderTarget(0, g_SurfaceAlbedo);
+	hr = g_pd3dDevice->SetRenderTarget(1, g_SurfaceNormal);
+	hr = g_pd3dDevice->SetRenderTarget(2, g_SurfaceDepth);
+	g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0x00000000, 1.0f, 0);
+
+
+	// roomv
+	//V( g_pEffect->SetTechnique( g_DeferredTechnique ) );
+	//MyRenderRoom();
 
 	// render ball
-	V( g_pEffect->SetTechnique( g_EnvMapTechnique ) );
+	V( g_pEffect->SetTechnique( g_DeferredTechnique ) );
 	MyRenderSphere();
 
 	// render floor
-	V( g_pEffect->SetTechnique( g_PlainTechnique ) );
+	V( g_pEffect->SetTechnique( g_DeferredTechnique ) );
 	MyRenderPlane();
 
 
-	//TODO: remove
-	MyRenderFullscreen();
+	g_pd3dDevice->SetRenderTarget(0, g_SurfaceScene);
+	g_pd3dDevice->SetRenderTarget(1, NULL);
+	g_pd3dDevice->SetRenderTarget(2, NULL);
+	g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, 0x00000000, 1.0f, 0);
 
-	return;
-}
+	//draw deferred passes
+	g_pd3dDevice->SetVertexDeclaration(quaddecl);
+	g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
+	g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+	g_pd3dDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ONE);
+	g_pd3dDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE);
 
-void MyRenderPlane()
-{
-	HRESULT hr;
-	UINT cPasses, iPass;
-	D3DXMATRIXA16 mWorld;
-	D3DXMatrixIdentity(&mWorld);
 
-	DWORD oldVal;
-	g_pd3dDevice->GetRenderState(D3DRS_CULLMODE, &oldVal);
-	g_pd3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+	g_pEffect->SetTexture(g_hDiffTexture, g_RTAlbedo);
+	g_pEffect->SetTexture(g_hSpecTexture, g_RTDepth);
+	g_pEffect->SetTexture(g_hBumpTexture, g_RTNormals);
 
-	V( g_pEffect->SetTexture( g_hDiffTexture, g_PlaneTexture));
-	V( g_pEffect->SetMatrix( g_hWorld, &mWorld));
 
-	V( g_pEffect->Begin( &cPasses, 0 ) );
-	V( g_pEffect->BeginPass( 0 ) );
+	//----------------------------------
+	// draw shadows
 	
-	g_PlaneObj.DrawPrimitive( g_pd3dDevice );
+	D3DXMATRIX			shadowvp;
+	float* quadvertices = GetFullscreenQuad();
 
-	V( g_pEffect->EndPass() );	
-	V( g_pEffect->End() );
+	// directional
 
-	g_pd3dDevice->SetRenderState(D3DRS_CULLMODE, oldVal);
-}
-
-void MyRenderSphere()
-{
-	HRESULT hr;
-	UINT cPasses, iPass;
-	D3DXMATRIXA16 mWorld;
-	D3DXMatrixIdentity(&mWorld);
-
-	V( g_pEffect->SetTexture( g_hDiffTexture, g_CubeMapTexture));
-	V( g_pEffect->SetTexture( g_hBumpTexture, g_SphereTexture));
-	V( g_pEffect->SetMatrix( g_hWorld, &mWorld));
-
-	V( g_pEffect->Begin( &cPasses, 0 ) );
-	V( g_pEffect->BeginPass( 0 ) );
-	
-	g_SphereObj.DrawPrimitive( g_pd3dDevice );
-
-	V( g_pEffect->EndPass() );	
-	V( g_pEffect->End() );
-
-}
-
-
-void MyRenderRoom()
-{
-	HRESULT hr;
-	D3DXMATRIXA16 trans, rot, scale, temp;
-	D3DXMATRIXA16 worldMatrix;
-	float size = 200;
-
-
-	D3DXMatrixScaling(&scale, size, size, size);
-	D3DXMatrixTranslation(&trans, 0, -size, 0);
-
-	//1st wall
-	D3DXMatrixRotationY(&temp, -D3DX_PI/2.f);
-	worldMatrix = scale * trans * temp;
-	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
-	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[5]));
-
-	MyRenderOneWall();
-
-	//2nd wall
-	D3DXMatrixRotationX(&temp, D3DX_PI/2.f);
-	D3DXMatrixRotationZ(&rot, D3DX_PI/2.f);
-	worldMatrix = scale * trans * rot * temp;
-	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
-	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[0]));
-
-	MyRenderOneWall();
-
-	//3rd wall
-	D3DXMatrixRotationZ(&rot, D3DX_PI/2.f);
-	worldMatrix *= rot;
-	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
-	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[1]));
-
-	MyRenderOneWall();
-
-	//4th wall
-	D3DXMatrixRotationZ(&rot, D3DX_PI/2.f);
-	D3DXMatrixRotationX(&temp, D3DX_PI);
-	worldMatrix = worldMatrix * rot * temp;
-	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
-	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[2]));
-
-	MyRenderOneWall();
-
-	//5th wall
-	D3DXMatrixRotationX(&rot, D3DX_PI/2.f);
-	worldMatrix = scale * trans * rot;
-	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
-	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[3]));
-
-	MyRenderOneWall();
-
-	//6th wall
-	D3DXMatrixRotationX(&rot, D3DX_PI);
-	D3DXMatrixRotationZ(&temp, D3DX_PI);
-	worldMatrix = worldMatrix * rot * temp;
-	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
-	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[4]));
-
-	MyRenderOneWall();
-
-	return;
-}
-
-void MyRenderOneWall()
-{
-	HRESULT hr;
-
+	g_pEffect->SetTechnique(g_DeferredDirectionalTechnique);
 	g_pEffect->Begin(NULL, 0);
 	g_pEffect->BeginPass(0);
-	
-	// draw scene objects
-	g_OneWall.DrawPrimitive( g_pd3dDevice );
+	{
+		for( int i = 0; i < NUM_DIRECTIONAL_LIGHTS; ++i )
+		{
+			DXDirectionalLight& lt = directionallights[i];
+			lt.GetViewProjMatrix(shadowvp, D3DXVECTOR3(0, 0, 0));
 
-	g_pEffect->EndPass();	
+			g_pEffect->SetVector(g_hLightColor, (D3DXVECTOR4*)&lt.GetColor());
+			g_pEffect->SetVector(g_hLightPosition, &lt.GetDirection());
+			g_pEffect->SetMatrix(g_hLightViewProj, &shadowvp);
+			g_pEffect->SetTexture(g_hShadowTexture, lt.GetShadowMap());
+			g_pEffect->CommitChanges();
+			g_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, quadvertices, 6 * sizeof(float));
+		}
+	}
+	g_pEffect->EndPass();
 	g_pEffect->End();
+
+
+	delete[] quadvertices;
+
+	//rewind
+	g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, TRUE);
+	g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+	g_pd3dDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+	g_pd3dDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+
+	g_pd3dDevice->SetRenderTarget(0, oldsurface);
+	oldsurface->Release();
+	g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, 0x0000000, 1.0f, 0);
+
+	//render evironment
+
+	g_pEffect->SetTechnique(g_PlainTechnique);
+	MyRenderRoom();
+	
+	MyRenderFullscreen(g_RTScene);
+
+	//set scene rt
+	if( pOldDS )
+    {
+        g_pd3dDevice->SetDepthStencilSurface( pOldDS );
+        pOldDS->Release();
+    }
+
+	return;
+}
+
+
+/*
+==================================================
+Renders scene into shadowmaps
+==================================================
+*/
+void MyRenderShadows()
+{
+	LPDIRECT3DSURFACE9	oldsurface = NULL;
+	g_pd3dDevice->GetRenderTarget(0, &oldsurface);
+
+
+	//-------------------------------------
+	// render scene
+
+	// directional
+
+	g_pShadowEffect->SetTechnique("distance_directional");
+	g_pShadowEffect->Begin(NULL, 0);
+	g_pShadowEffect->BeginPass(0);
+	{
+		for( int i = 0; i < NUM_DIRECTIONAL_LIGHTS; ++i )
+		{
+			DXDirectionalLight& lt = directionallights[i];
+			lt.DrawShadowMap(g_pd3dDevice, g_pShadowEffect, &MyRenderShadowCasters);
+		}
+	}
+	g_pShadowEffect->EndPass();
+	g_pShadowEffect->End();
+
+	// point ???
+
+
+
+	//-------------------------------------------
+	// blur
+
+	// directional
+	
+	g_pShadowEffect->SetTechnique("blur5x5");
+	g_pShadowEffect->Begin(NULL, 0);
+	g_pShadowEffect->BeginPass(0);
+	{
+		for( int i = 0; i < NUM_DIRECTIONAL_LIGHTS; ++i )
+		{
+			DXDirectionalLight& lt = directionallights[i];
+			lt.BlurShadowMap(g_pd3dDevice, g_pShadowEffect);
+		}
+	}
+	g_pShadowEffect->EndPass();
+	g_pShadowEffect->End();
+
+	// point ???
+
+
+	// return surface
+	g_pd3dDevice->SetRenderTarget(0, oldsurface);
+	oldsurface->Release();
+}
+
+/*
+=============================================
+Renders all shadow casters
+=============================================
+*/
+void MyRenderShadowCasters(LPD3DXEFFECT effect)
+{
+	//draw sphere and plane
+	D3DXMATRIXA16 matWorld;
+	D3DXMatrixIdentity(&matWorld);
+
+	effect->SetMatrix("matWorld", &matWorld);
+	effect->CommitChanges();
+
+	g_SphereObj.DrawPrimitive( g_pd3dDevice );
+	g_PlaneObj.DrawPrimitive( g_pd3dDevice );
 }
 
 
 
+
+/*
+==========================================================================
+Renders scene into cubemap
+==========================================================================
+*/
 void MyRenderSceneIntoCubeMap()
 {
     HRESULT hr;
 	UINT cPasses, iPass;
 
     // The projection matrix has a FOV of 90 degrees and asp ratio of 1
-	D3DXMATRIXA16 mWorld;
+	D3DXMATRIXA16 mWorld, mWorldInv;
 	D3DXMatrixIdentity(&mWorld);
+	D3DXMatrixInverse(&mWorldInv, NULL, &mWorld);
 
     D3DXMATRIXA16 mProj;
     D3DXMatrixPerspectiveFovLH( &mProj, D3DX_PI * 0.5f, 1.0f, 0.01f, 100000.0f );
@@ -427,7 +582,13 @@ void MyRenderSceneIntoCubeMap()
 }
 
 
-void MyRenderFullscreen()
+/*
+=================================================================
+Draws texture on top of the screen.
+Useful for debug and else
+=================================================================
+*/
+float* GetFullscreenQuad()
 {
 	float quadvertices[36] =
 	{
@@ -439,15 +600,31 @@ void MyRenderFullscreen()
 		(float)screenSize.x - 0.5f,						-0.5f, 0, 1,	1, 0,
 		(float)screenSize.x - 0.5f, (float)screenSize.y - 0.5f, 0, 1,	1, 1
 	};
+	float* narr = new float[36];
+	memcpy(narr, quadvertices, sizeof(quadvertices));
+	return narr;
+}
+
+void MyRenderFullscreen(LPDIRECT3DTEXTURE9 texture)
+{
+	float* quadvertices = GetFullscreenQuad();
 
 	g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, FALSE);
+	g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+	g_pd3dDevice->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+	g_pd3dDevice->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+	g_pd3dDevice->SetRenderState(D3DRS_SRGBWRITEENABLE, TRUE);
 
-	g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0);
+	//g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, 0xff000000, 1.0f, 0);
 	g_pd3dDevice->SetFVF(D3DFVF_XYZRHW|D3DFVF_TEX1);
-	g_pd3dDevice->SetTexture(0, g_PlaneTexture);
+	g_pd3dDevice->SetTexture(0, texture);
 	g_pd3dDevice->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, quadvertices, 6 * sizeof(float));
 
 	g_pd3dDevice->SetRenderState(D3DRS_ZENABLE, TRUE);
+	g_pd3dDevice->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+	g_pd3dDevice->SetRenderState(D3DRS_SRGBWRITEENABLE, FALSE);
+
+	delete[] quadvertices;
 }
 
 
@@ -474,11 +651,32 @@ void MyRenderText()
 void MyFrameMove(float fElapsedTime)
 {
 	g_Camera.FrameMove( fElapsedTime );
+
+
+	//TODO: REMOVEE!!!!
+	//rotate directional light!!!
+	static float time = 0;
+	time += 0.3f * fElapsedTime;
+	D3DXMATRIXA16 matRot;
+	D3DXMatrixRotationY(&matRot, time);
+
+	float angle = D3DX_PI*2.0f / NUM_DIRECTIONAL_LIGHTS;
+	for(int i = 0; i < NUM_DIRECTIONAL_LIGHTS; i++)
+	{
+		D3DXVECTOR3 newDir = D3DXVECTOR3(120*cos(angle*i), 100, 120*sin(angle*i));
+		D3DXVec3TransformCoord(&newDir, &newDir, &matRot);
+	
+		directionallights[i].GetDirection().x = newDir.x;
+		directionallights[i].GetDirection().y = newDir.y;
+		directionallights[i].GetDirection().z = newDir.z;
+	}
 }
 
 
 void MyDestroyScene()
 {
+	SAFE_RELEASE(quaddecl);
+
 	g_PlaneObj.Destroy();
 	g_SphereObj.Destroy();
 	g_OneWall.Destroy();
@@ -491,10 +689,174 @@ void MyDestroyScene()
 	delete[] g_SkyBoxTextures;
 
 	SAFE_RELEASE(g_CubeMapTexture);
+
+	//release render targets
+	SAFE_RELEASE(g_RTAlbedo);
+	SAFE_RELEASE(g_RTDepth);
+	SAFE_RELEASE(g_RTNormals);
+	SAFE_RELEASE(g_RTScene);
+
+	SAFE_RELEASE(g_SurfaceAlbedo);
+	SAFE_RELEASE(g_SurfaceDepth);
+	SAFE_RELEASE(g_SurfaceNormal);
+	SAFE_RELEASE(g_SurfaceScene);
+
+	SAFE_RELEASE(g_pDepthStencil);
+
+	for( int i = 0; i < NUM_DIRECTIONAL_LIGHTS; ++i )
+		directionallights[i].~DXDirectionalLight(); //cal destructors manually
 }
 
 
 
+
+
+/*
+=========================================================================================
+Rendering primitives
+=========================================================================================
+*/
+
+void MyRenderPlane()
+{
+	HRESULT hr;
+	D3DXMATRIXA16 mWorld, mWorldInv;
+	D3DXMatrixIdentity(&mWorld);
+	D3DXMatrixInverse(&mWorldInv, NULL, &mWorld);
+
+	DWORD oldVal;
+	g_pd3dDevice->GetRenderState(D3DRS_CULLMODE, &oldVal);
+	g_pd3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_PlaneTexture));
+	V( g_pEffect->SetMatrix( g_hWorld, &mWorld));
+	V( g_pEffect->SetMatrix( g_hWorldInv, &mWorldInv));
+
+	g_pEffect->Begin( NULL, 0 );
+	g_pEffect->BeginPass( 0 );
+	
+	g_PlaneObj.DrawPrimitive( g_pd3dDevice );
+
+	g_pEffect->EndPass();	
+	g_pEffect->End();
+
+	g_pd3dDevice->SetRenderState(D3DRS_CULLMODE, oldVal);
+}
+
+void MyRenderSphere()
+{
+	HRESULT hr;
+	D3DXMATRIXA16 mWorld, mWorldInv;
+	D3DXMatrixIdentity(&mWorld);
+	D3DXMatrixInverse(&mWorldInv, NULL, &mWorld);
+
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_SphereTexture));
+	V( g_pEffect->SetTexture( g_hBumpTexture, g_CubeMapTexture));
+	V( g_pEffect->SetMatrix( g_hWorld, &mWorld));
+	V( g_pEffect->SetMatrix( g_hWorldInv, &mWorldInv));
+
+
+	g_pEffect->Begin( NULL, 0 );
+	g_pEffect->BeginPass( 0 );
+	
+	g_SphereObj.DrawPrimitive( g_pd3dDevice );
+
+	g_pEffect->EndPass();	
+	g_pEffect->End();
+
+}
+
+void MyRenderRoom()
+{
+	HRESULT hr;
+	D3DXMATRIXA16 trans, rot, scale, temp;
+	D3DXMATRIXA16 worldMatrix;
+	D3DXMATRIXA16 worldMatrixInv;
+	float size = 200;
+
+
+	D3DXMatrixScaling(&scale, size, size, size);
+	D3DXMatrixTranslation(&trans, 0, -size, 0);
+
+	//1st wall
+	D3DXMatrixRotationY(&temp, -D3DX_PI/2.f);
+	worldMatrix = scale * trans * temp;
+	D3DXMatrixInverse(&worldMatrixInv, NULL, &worldMatrix);
+	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
+	V( g_pEffect->SetMatrix( g_hWorldInv, &worldMatrixInv ) );
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[5]));
+
+	MyRenderOneWall();
+
+	//2nd wall
+	D3DXMatrixRotationX(&temp, D3DX_PI/2.f);
+	D3DXMatrixRotationZ(&rot, D3DX_PI/2.f);
+	worldMatrix = scale * trans * rot * temp;
+	D3DXMatrixInverse(&worldMatrixInv, NULL, &worldMatrix);
+	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
+	V( g_pEffect->SetMatrix( g_hWorldInv, &worldMatrixInv ) );
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[0]));
+
+	MyRenderOneWall();
+
+	//3rd wall
+	D3DXMatrixRotationZ(&rot, D3DX_PI/2.f);
+	worldMatrix *= rot;
+	D3DXMatrixInverse(&worldMatrixInv, NULL, &worldMatrix);
+	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
+	V( g_pEffect->SetMatrix( g_hWorldInv, &worldMatrixInv ) );
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[1]));
+
+	MyRenderOneWall();
+
+	//4th wall
+	D3DXMatrixRotationZ(&rot, D3DX_PI/2.f);
+	D3DXMatrixRotationX(&temp, D3DX_PI);
+	worldMatrix = worldMatrix * rot * temp;
+	D3DXMatrixInverse(&worldMatrixInv, NULL, &worldMatrix);
+	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
+	V( g_pEffect->SetMatrix( g_hWorldInv, &worldMatrixInv ) );
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[2]));
+
+	MyRenderOneWall();
+
+	//5th wall
+	D3DXMatrixRotationX(&rot, D3DX_PI/2.f);
+	worldMatrix = scale * trans * rot;
+	D3DXMatrixInverse(&worldMatrixInv, NULL, &worldMatrix);
+	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
+	V( g_pEffect->SetMatrix( g_hWorldInv, &worldMatrixInv ) );
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[3]));
+
+	MyRenderOneWall();
+
+	//6th wall
+	D3DXMatrixRotationX(&rot, D3DX_PI);
+	D3DXMatrixRotationZ(&temp, D3DX_PI);
+	worldMatrix = worldMatrix * rot * temp;
+	D3DXMatrixInverse(&worldMatrixInv, NULL, &worldMatrix);
+	V( g_pEffect->SetMatrix( g_hWorld, &worldMatrix ) );
+	V( g_pEffect->SetMatrix( g_hWorldInv, &worldMatrixInv ) );
+	V( g_pEffect->SetTexture( g_hDiffTexture, g_SkyBoxTextures[4]));
+
+	MyRenderOneWall();
+
+	return;
+}
+
+void MyRenderOneWall()
+{
+	HRESULT hr;
+
+	g_pEffect->Begin(NULL, 0);
+	g_pEffect->BeginPass(0);
+	
+	// draw scene objects
+	g_OneWall.DrawPrimitive( g_pd3dDevice );
+
+	g_pEffect->EndPass();	
+	g_pEffect->End();
+}
 
 
 
@@ -649,19 +1011,13 @@ bool CALLBACK ModifyDeviceSettings( DXUTDeviceSettings* pDeviceSettings, void* p
         pDeviceSettings->d3d9.BehaviorFlags = D3DCREATE_SOFTWARE_VERTEXPROCESSING;
     }
 
-    // Debugging vertex shaders requires either REF or software vertex processing 
-    // and debugging pixel shaders requires REF.  
-#ifdef DEBUG_VS
-    if( pDeviceSettings->d3d9.DeviceType != D3DDEVTYPE_REF )
-    {
-        pDeviceSettings->d3d9.BehaviorFlags &= ~D3DCREATE_HARDWARE_VERTEXPROCESSING;
-        pDeviceSettings->d3d9.BehaviorFlags &= ~D3DCREATE_PUREDEVICE;
-        pDeviceSettings->d3d9.BehaviorFlags |= D3DCREATE_SOFTWARE_VERTEXPROCESSING;
-    }
-#endif
-#ifdef DEBUG_PS
-    pDeviceSettings->d3d9.DeviceType = D3DDEVTYPE_REF;
-#endif
+	if(caps.NumSimultaneousRTs < 3)
+	{
+		//cannot do deferred!
+		V( E_FAIL );
+		return false;
+	}
+
 
     // Enable anti-aliasing for HAL devices which support it
     CD3D9Enumeration* pEnum = DXUTGetD3D9Enumeration();
@@ -699,7 +1055,11 @@ HRESULT CALLBACK OnCreateDevice( IDirect3DDevice9* pd3dDevice, const D3DSURFACE_
     HRESULT hr;
     WCHAR str[MAX_PATH];
 
+
+	//assign some variables
+	screenSize = D3DXVECTOR2( pBackBufferSurfaceDesc->Width, pBackBufferSurfaceDesc->Height );
 	g_pd3dDevice = pd3dDevice;
+
 
     V_RETURN( g_DialogResourceManager.OnD3D9CreateDevice( pd3dDevice ) );
     V_RETURN( g_SettingsDlg.OnD3D9CreateDevice( pd3dDevice ) );
@@ -718,13 +1078,30 @@ HRESULT CALLBACK OnCreateDevice( IDirect3DDevice9* pd3dDevice, const D3DSURFACE_
 	g_SampleUI.GetEditBox( IDC_EDITBOX1 )->SetText( L"REMOVE THIS!" );
 
 
-	// create effect
-    DWORD dwShaderFlags = D3DXFX_NOT_CLONEABLE;
-    V_RETURN( DXUTFindDXSDKMediaFileCch( str, MAX_PATH, L"effect.fx" ) );
+	// create effects
+	LoadShaderFromFile(L"BaseShaders.fx", &g_pEffect);
+	LoadShaderFromFile(L"ShadowMaps.fx", &g_pShadowEffect);
 
+
+    // Setup the camera's view parameters
+    D3DXVECTOR3 vecEye( 32.2f, 20.5f, 0.0f );
+    D3DXVECTOR3 vecAt ( 0.0f, 0.0f, -0.0f );
+    g_Camera.SetViewParams( &vecEye, &vecAt );
+
+    return S_OK;
+}
+
+HRESULT LoadShaderFromFile(LPCTSTR path, LPD3DXEFFECT* effect)
+{
+	HRESULT hr;
+	WCHAR str[MAX_PATH];
+
+	DWORD dwShaderFlags = D3DXFX_NOT_CLONEABLE;
+
+    V_RETURN( DXUTFindDXSDKMediaFileCch( str, MAX_PATH, path ) );
 	ID3DXBuffer* pBuff = NULL;
-    hr = D3DXCreateEffectFromFile( pd3dDevice, str, NULL, NULL, dwShaderFlags,
-                                        NULL, &g_pEffect, &pBuff );
+    hr = D3DXCreateEffectFromFile( g_pd3dDevice, str, NULL, NULL, dwShaderFlags,
+                                        NULL, effect, &pBuff );
 	if(hr == E_FAIL)
 	{
 		std::wofstream file("shader_compile_errors.txt");
@@ -733,17 +1110,7 @@ HRESULT CALLBACK OnCreateDevice( IDirect3DDevice9* pd3dDevice, const D3DSURFACE_
 		return E_FAIL;
 		// look for shader errors in file
 	}
-
-
-    // Setup the camera's view parameters
-    D3DXVECTOR3 vecEye( 12.2f, 10.5f, 0.0f );
-    D3DXVECTOR3 vecAt ( 0.0f, 0.0f, -0.0f );
-    g_Camera.SetViewParams( &vecEye, &vecAt );
-
-    return S_OK;
 }
-
-
 
 
 
@@ -758,6 +1125,8 @@ HRESULT CALLBACK OnResetDevice( IDirect3DDevice9* pd3dDevice,
                                 const D3DSURFACE_DESC* pBackBufferSurfaceDesc, void* pUserContext )
 {
     HRESULT hr;
+	screenSize = D3DXVECTOR2( pBackBufferSurfaceDesc->Width, pBackBufferSurfaceDesc->Height );
+
 
     V_RETURN( g_DialogResourceManager.OnD3D9ResetDevice() );
     V_RETURN( g_SettingsDlg.OnD3D9ResetDevice() );
@@ -766,21 +1135,32 @@ HRESULT CALLBACK OnResetDevice( IDirect3DDevice9* pd3dDevice,
         V_RETURN( g_pFont->OnResetDevice() );
     if( g_pEffect )
         V_RETURN( g_pEffect->OnResetDevice() );
+	if( g_pShadowEffect)
+		V_RETURN( g_pShadowEffect->OnResetDevice() );
 
     // Store the correct technique handles for each material
 	g_DefaultTechnique = g_pEffect->GetTechniqueByName( "Default" );
 	g_EnvMapTechnique = g_pEffect->GetTechniqueByName( "EnvMap" );
 	g_PlainTechnique = g_pEffect->GetTechniqueByName( "Plain" );
+	g_DeferredTechnique = g_pEffect->GetTechniqueByName( "DeferredGBuffer" );
+	g_DeferredDirectionalTechnique = g_pEffect->GetTechniqueByName( "DeferredDirectional" );
 
 	g_hDiffTexture = g_pEffect->GetParameterBySemantic( 0, "Texture" );
 	g_hBumpTexture = g_pEffect->GetParameterBySemantic( 0, "BumpTexture" );
 	g_hSpecTexture = g_pEffect->GetParameterBySemantic( 0, "SpecTexture" );
+	g_hShadowTexture = g_pEffect->GetParameterBySemantic( 0, "ShadowTexture" );
+
 	g_hEyePosition = g_pEffect->GetParameterBySemantic( 0, "EyePosition" );
     g_hLightPosition = g_pEffect->GetParameterBySemantic( 0, "LightPosition" );
+    g_hLightColor = g_pEffect->GetParameterBySemantic( 0, "LightColor" );
+
     g_hWorld = g_pEffect->GetParameterBySemantic( 0, "World" );
+    g_hWorldInv = g_pEffect->GetParameterBySemantic( 0, "WorldInv" );
     g_hViewProjection = g_pEffect->GetParameterBySemantic( 0, "ViewProjection" );
+    g_hViewProjectionInv = g_pEffect->GetParameterBySemantic( 0, "ViewProjectionInv" );
     g_hView = g_pEffect->GetParameterBySemantic( 0, "View" );
 	g_hWorldView = g_pEffect->GetParameterBySemantic( 0, "WorldView" );
+	g_hLightViewProj = g_pEffect->GetParameterBySemantic( 0, "LightViewProj" );
 
 
     // Create a sprite to help batch calls when drawing many lines of text
@@ -790,8 +1170,6 @@ HRESULT CALLBACK OnResetDevice( IDirect3DDevice9* pd3dDevice,
     float fAspectRatio = pBackBufferSurfaceDesc->Width / ( FLOAT )pBackBufferSurfaceDesc->Height;
     g_Camera.SetProjParams( D3DX_PI / 4, fAspectRatio, 0.1f, 1000.0f );
     g_Camera.SetWindow( pBackBufferSurfaceDesc->Width, pBackBufferSurfaceDesc->Height );
-
-	screenSize = D3DXVECTOR2( pBackBufferSurfaceDesc->Width, pBackBufferSurfaceDesc->Height );
 
 
     g_HUD.SetLocation( pBackBufferSurfaceDesc->Width - 170, 0 );
@@ -938,6 +1316,8 @@ void CALLBACK OnLostDevice( void* pUserContext )
         g_pFont->OnLostDevice();
     if( g_pEffect )
         g_pEffect->OnLostDevice();
+	if( g_pShadowEffect )
+        g_pShadowEffect->OnLostDevice();
 
     SAFE_RELEASE( g_pTextSprite );
 }
@@ -954,6 +1334,7 @@ void CALLBACK OnDestroyDevice( void* pUserContext )
     g_DialogResourceManager.OnD3D9DestroyDevice();
     g_SettingsDlg.OnD3D9DestroyDevice();
     SAFE_RELEASE( g_pEffect );
+	SAFE_RELEASE( g_pShadowEffect );
     SAFE_RELEASE( g_pFont );
 
 	MyDestroyScene();

@@ -171,6 +171,10 @@
       <Command>
       </Command>
     </PostBuildEvent>
+    <FxCompile>
+      <EnableDebuggingInformation>true</EnableDebuggingInformation>
+      <EntryPointName>main</EntryPointName>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|X64'">
     <ClCompile>
@@ -400,8 +404,8 @@
     <ClCompile Include="DXUT\SDKmisc.cpp" />
     <ClCompile Include="BilliardBalls.cpp" />
     <ClCompile Include="Formats.cpp" />
-    <ClCompile Include="MeshLoader.cpp" />
     <ClCompile Include="CPlane.cpp" />
+    <ClCompile Include="Lights.cpp" />
     <ClInclude Include="CCamera.h" />
     <ClInclude Include="CPlane.h" />
     <ClInclude Include="CSphere.h" />
@@ -417,16 +421,32 @@
     <ClInclude Include="DXUT\SDKmesh.h" />
     <ClInclude Include="DXUT\SDKmisc.h" />
     <ClInclude Include="Formats.h" />
-    <CLInclude Include="MeshLoader.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="effect.fx" />
+    <None Include="BaseShaders.fx" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Lights.h" />
     <CLInclude Include="resource.h" />
     <ResourceCompile Include="MeshFromOBJ.rc" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="ShadowMaps.fx">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Profile|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Profile|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <FileType>Document</FileType>
+    </None>
   </ItemGroup>
   <ItemGroup>
   </ItemGroup>

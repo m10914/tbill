@@ -3,7 +3,8 @@
 
 Simplified shader of MeshFromObj sample, which is designed specifically to draw polygons of specified colors
 
-Damon Wall
+
+(c) Damon Wall
 
 ================================================================================================
 */
@@ -14,19 +15,31 @@ Damon Wall
 // Global variables
 //--------------------------------------------------------------------------------------
 float3 g_vMaterialDiffuse : Diffuse = float3( 0.8f, 0.8f, 0.8f );   // Material's diffuse color
-float3 g_vLightPosition : LightPosition = float3( -2.0f, 1.0f, 0.0f );   // Light position
+
+float4 g_vLightPosition : LightPosition;   // Light positiondirLightIntensity
+float3 g_vLightColor : LightColor = float3( 1.0f, 1.0f, 1.0f );
+
 float3 g_vEyePosition : EyePosition;
 
 float3 LUMINANCE_WEIGHTS = float3(0.27, 0.67, 0.06);
 
 float4x4 g_mWorld : World;          // World matrix
+float4x4 g_mWorldInv : WorldInv;	// World matrix inversed
 float4x4 g_mViewProj : ViewProjection;
+float4x4 g_mViewProjInv: ViewProjectionInv;
 float4x4 g_mView : View;
 float4x4 g_mWorldView : WorldView;
+float4x4 g_mLightViewProj : LightViewProj;
 
-texture  g_DiffTexture : Texture;   // Color texture for mesh
-texture  g_BumpTexture : BumpTexture;   // Color texture for mesh
-texture  g_SpecTexture : SpecTexture;   // Color texture for mesh
+
+texture  g_DiffTexture : Texture;   // tex1
+texture  g_BumpTexture : BumpTexture;   // tex2
+texture  g_SpecTexture : SpecTexture;   // tex3
+texture  g_ShadowTexture : ShadowTexture;   // tex4
+
+
+//function declarations
+float2 FuncDirectionalLight(float2 tex, float4 normd);
 
 
 /*
@@ -41,22 +54,40 @@ sampler DiffTextureSampler = sampler_state
     MipFilter = NONE;
     MinFilter = NONE;
     MagFilter = NONE;
+
+	AddressU = clamp;
+	AddressV = clamp;
 };
 sampler BumpTextureSampler = sampler_state
 {
 	Texture = <g_BumpTexture>; 
-    MipFilter = LINEAR;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
+    MipFilter = NONE;
+    MinFilter = NONE;
+    MagFilter = NONE;
+
+	AddressU = clamp;
+	AddressV = clamp;
 };
 sampler SpecTextureSampler = sampler_state
 {
 	Texture = <g_SpecTexture>; 
-    MipFilter = LINEAR;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
-};
+    MipFilter = NONE;
+    MinFilter = NONE;
+    MagFilter = NONE;
 
+	AddressU = clamp;
+	AddressV = clamp;
+};
+sampler ShadowSampler = sampler_state
+{
+	Texture = <g_ShadowTexture>; 
+    MipFilter = NONE;
+    MinFilter = NONE;
+    MagFilter = NONE;
+
+	AddressU = clamp;
+	AddressV = clamp;
+};
 
 
 
@@ -212,8 +243,8 @@ void EMFragmentShader( float2 vTexCoord: TEXCOORD0,
 					float3 EnvTexCoord : TEXCOORD3,
                out float4 vColorOut: COLOR0)
 {  
-	float4 envTex = texCUBE( DiffTextureSampler, EnvTexCoord );
-	float4 difTex = tex2D( BumpTextureSampler, vTexCoord );
+	float4 envTex = texCUBE( BumpTextureSampler, EnvTexCoord );
+	float4 difTex = tex2D( DiffTextureSampler, vTexCoord );
 
 	float3 lightDir = normalize(g_vLightPosition - WorldPos);
 	float3 viewDir = normalize(g_vEyePosition - WorldPos);
@@ -267,6 +298,123 @@ void PlainFragmentShader( float2 vTexCoord: TEXCOORD0,
 
 /*
 =============================================================================
+DEFERRED technique
+
+Outputs texture to 3 render targets
+=============================================================================
+*/
+
+struct DEF_VS_OUTPUT
+{
+	float4 vPosProj: POSITION;
+	float2 vTexCoordOut: TEXCOORD0;
+	float3 vInvNormal : TEXCOORD1;
+	float2 vDepth : TEXCOORD2;
+};
+
+DEF_VS_OUTPUT DeferredVertShader(VS_INPUT IN)
+{
+	DEF_VS_OUTPUT OUT;
+
+    OUT.vPosProj = mul( IN.vPosObject, g_mWorld );
+    OUT.vPosProj = mul( OUT.vPosProj, g_mViewProj );
+	OUT.vTexCoordOut = IN.vTexCoordIn;
+
+	OUT.vInvNormal = mul(g_mWorldInv, float4(IN.vNormalObject, 0)).xyz;
+	OUT.vDepth = OUT.vPosProj.zw;
+
+	return OUT;
+}
+
+void DeferredFragmentShader( float2 vTexCoord: TEXCOORD0,
+							float3 vInvNormal : TEXCOORD1,
+							float2 vDepth : TEXCOORD2,
+               out float4 vColorAlbedo: COLOR0,
+               out float4 vColorNormals: COLOR1,
+               out float4 vColorDepth: COLOR2 )
+{  
+
+	vColorAlbedo = tex2D( DiffTextureSampler, vTexCoord );
+	vColorAlbedo.a = 1;
+	vColorDepth = float4(vDepth.x / vDepth.y, 0, 0, 1);
+	vColorNormals = float4(vInvNormal, 1);
+}
+
+
+
+/*
+=============================================================================
+DEFERRED for directional lights
+
+=============================================================================
+*/
+
+void DeferredDirectionalFragmentShader(
+	in	float2 tex		: TEXCOORD0,
+	out	float4 color	: COLOR)
+{
+	float4 scene = tex2D(DiffTextureSampler, tex);
+	float4 normd = tex2D(BumpTextureSampler, tex);
+	float2 irrad;
+
+	normd.w = tex2D(SpecTextureSampler, tex).r;
+	irrad = FuncDirectionalLight(tex, normd);
+
+	scene.rgb = pow(scene.rgb, 2.2f);
+	color.rgb = scene.rgb * g_vLightColor.rgb * irrad.x + g_vLightColor.rgb * irrad.y;
+	color.a = scene.a;
+}
+
+float2 FuncDirectionalLight(float2 tex, float4 normd)
+{
+	float2 irrad = 0;
+	//float4 wpos = float4(tex.x * 2 - 1, tex.y * -2 + 1, normd.w, 1);
+	float4 wpos = float4(tex.x * 2 - 1, tex.y * -2 + 1, normd.w, 1);
+
+	if( normd.w > 0 )
+	{
+		wpos = mul(wpos, g_mViewProjInv);
+		wpos /= wpos.w;
+
+		float3 n = normalize(normd.xyz);
+		float3 l = normalize(g_vLightPosition.xyz);
+		float3 v = normalize(g_vEyePosition.xyz - wpos.xyz);
+		float3 h = normalize(l + v);
+
+		float diffuse = saturate(dot(n, l));
+		float specular = saturate(dot(n, h));
+
+		specular = pow(specular, 200);
+
+		// shadow term
+		float4 lpos = mul(wpos, g_mLightViewProj);
+		float2 ltex = (lpos.xy / lpos.w) * float2(0.5f, -0.5f) + 0.5f;
+
+		float2 sd = tex2D(ShadowSampler, ltex).rg;
+		float d = length(g_vLightPosition.w * g_vLightPosition.xyz - wpos.xyz);
+
+		float mean = sd.x;
+		float variance = max(sd.y - sd.x * sd.x, 0.5f);
+
+		float md = mean - d;
+		float pmax = variance / (variance + md * md);
+
+		float t = max(d <= mean, pmax);
+		float s = ((sd.x < 0.01f) ? 1.0f : t);
+
+		s = saturate(s + 0.1f);
+
+		irrad.x = diffuse * s * 0.4f;
+		irrad.y = specular * s * 0.4f;
+	}
+
+	return irrad;
+}
+
+
+
+/*
+=============================================================================
 Techniques
 =============================================================================
 */
@@ -298,5 +446,33 @@ technique EnvMap
 	{
 		VertexShader = compile vs_2_0 EMVertShader();    
         PixelShader = compile ps_2_0 EMFragmentShader(); 
+	}
+}
+
+
+technique DeferredGBuffer
+{
+	pass P0
+	{
+		VertexShader = compile vs_2_0 DeferredVertShader();    
+        PixelShader = compile ps_2_0 DeferredFragmentShader(); 
+	}
+}
+
+technique DeferredGBufferEnv
+{
+	pass P0
+	{
+		VertexShader = compile vs_2_0 DeferredVertShader();    
+        PixelShader = compile ps_2_0 DeferredFragmentShader(); 
+	}
+}
+
+technique DeferredDirectional
+{
+	pass P0
+	{
+		vertexshader = null;
+		pixelshader = compile ps_3_0 DeferredDirectionalFragmentShader();
 	}
 }

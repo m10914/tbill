@@ -18,10 +18,11 @@
     <Filter Include="Primitives">
       <UniqueIdentifier>{68a8a58a-822f-4cf7-861e-dd6baeeb278b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Lights">
+      <UniqueIdentifier>{83f81208-2df6-4190-8c7b-c0533d0c3651}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="MeshLoader.cpp" />
-    <CLInclude Include="MeshLoader.h" />
     <ClCompile Include="DXUT\DXUT.cpp">
       <Filter>DXUT</Filter>
     </ClCompile>
@@ -62,12 +63,15 @@
     <ClCompile Include="CSphere.cpp">
       <Filter>Primitives</Filter>
     </ClCompile>
+    <ClCompile Include="Lights.cpp">
+      <Filter>Lights</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="DXUT\Optional\directx.ico">
       <Filter>Resource Files</Filter>
     </None>
-    <None Include="effect.fx">
+    <None Include="BaseShaders.fx">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>
@@ -123,7 +127,13 @@
     <ClInclude Include="Formats.h">
       <Filter>Primitives</Filter>
     </ClInclude>
+    <ClInclude Include="Lights.h">
+      <Filter>Lights</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="ShadowMaps.fx">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>
