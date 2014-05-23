@@ -117,6 +117,7 @@ D3DXHANDLE					g_DefaultTechnique;
 D3DXHANDLE					g_EnvMapTechnique;
 D3DXHANDLE					g_PlainTechnique;
 D3DXHANDLE					g_DeferredTechnique;
+D3DXHANDLE					g_DeferredEnvTechnique;
 D3DXHANDLE					g_DeferredDirectionalTechnique;
 
 
@@ -128,7 +129,6 @@ D3DXHANDLE					g_DeferredDirectionalTechnique;
 // UI control IDs
 //--------------------------------------------------------------------------------------
 #define IDC_STATIC              -1
-#define IDC_EDITBOX1			1
 
 
 
@@ -347,12 +347,8 @@ void MyRenderScene()
 	g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0x00000000, 1.0f, 0);
 
 
-	// roomv
-	//V( g_pEffect->SetTechnique( g_DeferredTechnique ) );
-	//MyRenderRoom();
-
 	// render ball
-	V( g_pEffect->SetTechnique( g_DeferredTechnique ) );
+	V( g_pEffect->SetTechnique( g_DeferredEnvTechnique ) );
 	MyRenderSphere();
 
 	// render floor
@@ -474,16 +470,20 @@ void MyRenderShadows()
 	// blur
 
 	// directional
-	
+	static int NumOfBlurPasses = 0;
+
 	g_pShadowEffect->SetTechnique("blur5x5");
 	g_pShadowEffect->Begin(NULL, 0);
 	g_pShadowEffect->BeginPass(0);
 	{
-		for( int i = 0; i < NUM_DIRECTIONAL_LIGHTS; ++i )
+		for(int i = 0; i < NumOfBlurPasses; i++)
 		{
-			DXDirectionalLight& lt = directionallights[i];
-			lt.BlurShadowMap(g_pd3dDevice, g_pShadowEffect);
-		}
+			for( int i = 0; i < NUM_DIRECTIONAL_LIGHTS; ++i )
+			{
+				DXDirectionalLight& lt = directionallights[i];
+				lt.BlurShadowMap(g_pd3dDevice, g_pShadowEffect);
+			}
+		}	
 	}
 	g_pShadowEffect->EndPass();
 	g_pShadowEffect->End();
@@ -511,7 +511,7 @@ void MyRenderShadowCasters(LPD3DXEFFECT effect)
 	effect->CommitChanges();
 
 	g_SphereObj.DrawPrimitive( g_pd3dDevice );
-	g_PlaneObj.DrawPrimitive( g_pd3dDevice );
+	//g_PlaneObj.DrawPrimitive( g_pd3dDevice );
 }
 
 
@@ -938,10 +938,6 @@ void InitApp()
     g_SampleUI.Init( &g_DialogResourceManager );
 
 	
-	g_SampleUI.AddEditBox( IDC_EDITBOX1, L"", 5, 20,
-                           100, 32 );
-
-
     g_HUD.SetCallback( OnGUIEvent ); int iY = 10;
     g_SampleUI.SetCallback( OnGUIEvent ); iY = 10;
 
@@ -1072,11 +1068,6 @@ HRESULT CALLBACK OnCreateDevice( IDirect3DDevice9* pd3dDevice, const D3DSURFACE_
 
 	MyCreateScene();
 
-	// load stuff
-	//WCHAR areaStr[256];
-	//swprintf(areaStr, L"%f", g_MeshLoader.CurrentArea);
-	g_SampleUI.GetEditBox( IDC_EDITBOX1 )->SetText( L"REMOVE THIS!" );
-
 
 	// create effects
 	LoadShaderFromFile(L"BaseShaders.fx", &g_pEffect);
@@ -1143,6 +1134,7 @@ HRESULT CALLBACK OnResetDevice( IDirect3DDevice9* pd3dDevice,
 	g_EnvMapTechnique = g_pEffect->GetTechniqueByName( "EnvMap" );
 	g_PlainTechnique = g_pEffect->GetTechniqueByName( "Plain" );
 	g_DeferredTechnique = g_pEffect->GetTechniqueByName( "DeferredGBuffer" );
+	g_DeferredEnvTechnique = g_pEffect->GetTechniqueByName( "DeferredGBufferEnv" );
 	g_DeferredDirectionalTechnique = g_pEffect->GetTechniqueByName( "DeferredDirectional" );
 
 	g_hDiffTexture = g_pEffect->GetParameterBySemantic( 0, "Texture" );
@@ -1284,19 +1276,7 @@ void CALLBACK OnGUIEvent( UINT nEvent, int nControlID, CDXUTControl* pControl, v
 
     switch( nControlID )
     {
-		case IDC_EDITBOX1:
-			switch( nEvent )
-            {
-                case EVENT_EDITBOX_STRING:
-                {
-					auto res = ( ( CDXUTEditBox* )pControl )->GetText();
 
-					//g_MeshLoader.SetCurrentArea(_wtof(res));
-
-                    break;
-                }
-            }
-            break;
     }
 }
 

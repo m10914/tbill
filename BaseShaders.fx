@@ -99,9 +99,9 @@ sampler ShadowSampler = sampler_state
 
 /*
 =============================================================================
-VertShader
+DEFAULT
 
-Calculates matrices and per-vertex color
+Ordinary specular bump-mapping shader (legacy, not used here)
 =============================================================================
 */
 
@@ -152,14 +152,6 @@ VS_OUTPUT VertShader(VS_INPUT IN)
 }
 
 
-
-/*
-=============================================================================
-FragmentShader
-
-does nothing
-=============================================================================
-*/
 void FragmentShader( float2 vTexCoord: TEXCOORD0,
 					float3 vLightVec : TEXCOORD1,
 					float3 vEyeVec : TEXCOORD2,
@@ -189,12 +181,12 @@ void FragmentShader( float2 vTexCoord: TEXCOORD0,
 //-----------------------------------------------------------------------------------
 //-----------------------------------------------------------------------------------
 //-----------------------------------------------------------------------------------
-// env map test
+
 /*
 =============================================================================
-VertShader
+ENVIRONMENT MAPPING (non-deferred)
 
-Calculates matrices and per-vertex color
+Just for test, later will be turned into deferred version
 =============================================================================
 */
 
@@ -230,13 +222,6 @@ EM_VS_OUTPUT EMVertShader(VS_INPUT IN)
 }
 
 
-/*
-=============================================================================
-EMFragmentShader
-
-does nothing
-=============================================================================
-*/
 void EMFragmentShader( float2 vTexCoord: TEXCOORD0,
 					float3 Normal : TEXCOORD1,
 					float4 WorldPos : TEXCOORD2,
@@ -257,6 +242,69 @@ void EMFragmentShader( float2 vTexCoord: TEXCOORD0,
 	vColorOut = difTex * (light*0.5 + 0.5) + specular + envSpec;
 }
 
+
+
+/*
+=============================================================================
+DEFERRED ENVMAP technique
+
+Outputs texture to 3 render targets with envmapping
+=============================================================================
+*/
+
+struct DEFENV_VS_OUTPUT
+{
+	float4 vPosProj: POSITION;
+	float2 vTexCoordOut: TEXCOORD0;
+	float3 vInvNormal : TEXCOORD1;
+	float2 vDepth : TEXCOORD2;
+	float3 EnvTexCoord: TEXCOORD3;
+};
+
+DEFENV_VS_OUTPUT DeferredEnvVertShader(VS_INPUT IN)
+{
+	DEFENV_VS_OUTPUT OUT;
+
+    OUT.vPosProj = mul( IN.vPosObject, g_mWorld );
+    OUT.vPosProj = mul( OUT.vPosProj, g_mViewProj );
+	OUT.vTexCoordOut = IN.vTexCoordIn;
+
+	OUT.vInvNormal = mul(g_mWorldInv, float4(IN.vNormalObject, 0)).xyz;
+	OUT.vDepth = OUT.vPosProj.zw;
+
+	// em (need to optimize)
+	float4 oPos = mul( IN.vPosObject, g_mWorldView );
+    float3 vN = mul( IN.vNormalObject, g_mWorldView );
+    vN = normalize( vN );
+    float3 vEyeR = -normalize( oPos );
+    OUT.EnvTexCoord = 2 * dot( vEyeR, vN ) * vN - vEyeR;
+
+	return OUT;
+}
+
+void DeferredEnvFragmentShader( float2 vTexCoord: TEXCOORD0,
+							float3 vInvNormal : TEXCOORD1,
+							float2 vDepth : TEXCOORD2,
+							float3 EnvTexCoord : TEXCOORD3,
+               out float4 vColorAlbedo: COLOR0,
+               out float4 vColorNormals: COLOR1,
+               out float4 vColorDepth: COLOR2 )
+{  
+
+	//calculate albedo
+	float4 difTex = tex2D( DiffTextureSampler, vTexCoord );
+	float4 envTex = texCUBE( BumpTextureSampler, EnvTexCoord );
+	float envSpec = pow(dot(LUMINANCE_WEIGHTS, envTex.rgb), 5) * 1.5;
+	vColorAlbedo.rgb = difTex.rgb + envSpec;
+	vColorAlbedo.a = 1;
+
+
+	//calulate depth
+	vColorDepth = float4(vDepth.x / vDepth.y, 0, 0, 1);
+	
+	//calculate normal
+	vColorNormals = float4(vInvNormal, 1);
+}
 
 
 
@@ -394,13 +442,13 @@ float2 FuncDirectionalLight(float2 tex, float4 normd)
 		float d = length(g_vLightPosition.w * g_vLightPosition.xyz - wpos.xyz);
 
 		float mean = sd.x;
-		float variance = max(sd.y - sd.x * sd.x, 0.5f);
+		float variance = max(sd.y - sd.x * sd.x, 5.f);
 
 		float md = mean - d;
 		float pmax = variance / (variance + md * md);
 
 		float t = max(d <= mean, pmax);
-		float s = ((sd.x < 0.01f) ? 1.0f : t);
+		float s = ((sd.x < 0.001f) ? 1.0f : t);
 
 		s = saturate(s + 0.1f);
 
@@ -463,10 +511,11 @@ technique DeferredGBufferEnv
 {
 	pass P0
 	{
-		VertexShader = compile vs_2_0 DeferredVertShader();    
-        PixelShader = compile ps_2_0 DeferredFragmentShader(); 
+		VertexShader = compile vs_2_0 DeferredEnvVertShader();    
+        PixelShader = compile ps_2_0 DeferredEnvFragmentShader(); 
 	}
 }
+
 
 technique DeferredDirectional
 {

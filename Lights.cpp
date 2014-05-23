@@ -134,7 +134,7 @@ void DXDirectionalLight::GetViewProjMatrix(D3DXMATRIX& out, const D3DXVECTOR3& o
 	look.z = origin.z + direction.w * direction.z;
 
 	D3DXMatrixLookAtLH(&out, &look, &origin, &up);
-	D3DXMatrixOrthoLH(&proj, 200, 200, 0.1f, 400.f);
+	D3DXMatrixOrthoLH(&proj, 50, 50, 0.1f, 400.f);
 	D3DXMatrixMultiply(&out, &out, &proj);
 }
 
