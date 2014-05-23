@@ -259,6 +259,8 @@ struct DEFENV_VS_OUTPUT
 	float3 vInvNormal : TEXCOORD1;
 	float2 vDepth : TEXCOORD2;
 	float3 EnvTexCoord: TEXCOORD3;
+	float3 vWorldPos: TEXCOORD4;
+	float3 vWorldNormal: TEXCOORD5;
 };
 
 DEFENV_VS_OUTPUT DeferredEnvVertShader(VS_INPUT IN)
@@ -266,8 +268,11 @@ DEFENV_VS_OUTPUT DeferredEnvVertShader(VS_INPUT IN)
 	DEFENV_VS_OUTPUT OUT;
 
     OUT.vPosProj = mul( IN.vPosObject, g_mWorld );
+	OUT.vWorldPos = OUT.vPosProj;
     OUT.vPosProj = mul( OUT.vPosProj, g_mViewProj );
 	OUT.vTexCoordOut = IN.vTexCoordIn;
+
+	OUT.vWorldNormal = mul( IN.vNormalObject, g_mWorld );
 
 	OUT.vInvNormal = mul(g_mWorldInv, float4(IN.vNormalObject, 0)).xyz;
 	OUT.vDepth = OUT.vPosProj.zw;
@@ -286,6 +291,8 @@ void DeferredEnvFragmentShader( float2 vTexCoord: TEXCOORD0,
 							float3 vInvNormal : TEXCOORD1,
 							float2 vDepth : TEXCOORD2,
 							float3 EnvTexCoord : TEXCOORD3,
+							float3 vWorldPos : TEXCOORD4,
+							float3 vWorldNormal : TEXCOORD5,
                out float4 vColorAlbedo: COLOR0,
                out float4 vColorNormals: COLOR1,
                out float4 vColorDepth: COLOR2 )
@@ -294,8 +301,12 @@ void DeferredEnvFragmentShader( float2 vTexCoord: TEXCOORD0,
 	//calculate albedo
 	float4 difTex = tex2D( DiffTextureSampler, vTexCoord );
 	float4 envTex = texCUBE( BumpTextureSampler, EnvTexCoord );
-	float envSpec = pow(dot(LUMINANCE_WEIGHTS, envTex.rgb), 5) * 1.5;
-	vColorAlbedo.rgb = difTex.rgb + envSpec;
+	float envSpec = dot(LUMINANCE_WEIGHTS, envTex.rgb);
+
+	float3 vEye = normalize(g_vEyePosition - vWorldPos);
+	float frac = dot(vEye, vWorldNormal);
+
+	vColorAlbedo.rgb = difTex * frac + pow(1-frac, 4) + (pow(envSpec, 2)*2 + envTex*0.2f) * saturate(1-frac + 0.1);
 	vColorAlbedo.a = 1;
 
 
@@ -452,8 +463,8 @@ float2 FuncDirectionalLight(float2 tex, float4 normd)
 
 		s = saturate(s + 0.1f);
 
-		irrad.x = diffuse * s * 0.4f;
-		irrad.y = specular * s * 0.4f;
+		irrad.x = diffuse * s * 0.7f;
+		irrad.y = specular * s * 0.7f;
 	}
 
 	return irrad;

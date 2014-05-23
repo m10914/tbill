@@ -1,14 +1,4 @@
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(148,27): warning X3206: 'mul': implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(149,46): warning X3206: implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(169,26): warning X3206: 'dot': implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(170,44): warning X3206: implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(173,16): warning X3206: implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(216,17): warning X3206: 'mul': implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(216,12): warning X3206: implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(218,12): warning X3206: implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(234,9): warning X3206: implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(235,44): warning X3206: implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(277,17): warning X3206: 'mul': implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(277,12): warning X3206: implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(279,12): warning X3206: implicit truncation of vector type
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(514,18): error X3004: undeclared identifier 'DeferredEvnVertShader'
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(420,14): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(286,2): error X4000: variable 'OUT' used without having been completely initialized
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(523,18): ID3DXEffectCompiler::CompileEffect: There was an error compiling expression
+ID3DXEffectCompiler: Compilation failed
