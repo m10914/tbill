@@ -26,9 +26,6 @@ Based on MeshFromOBJ sample from DirectX SDK 2009.
 
 #pragma warning(default: 4995)
 
-//#define DEBUG_VS   // Uncomment this line to debug vertex shaders 
-//#define DEBUG_PS   // Uncomment this line to debug pixel shaders 
-
 
 
 //--------------------------------------------------------------------------------------
@@ -384,7 +381,7 @@ void MyRenderScene()
 	//----------------------------------
 	// draw shadows
 	
-	D3DXMATRIX			shadowvp;
+	D3DXMATRIX shadowvp;
 	float* quadvertices = GetFullscreenQuad();
 
 	// directional
@@ -427,8 +424,9 @@ void MyRenderScene()
 	g_pEffect->SetTechnique(g_PlainTechnique);
 	MyRenderRoom();
 	
+	//maybe render lights as spheres???
+
 	MyRenderFullscreen(g_RTScene);
-	//MyRenderFullscreen(g_RTNormals);
 
 	//set scene rt
 	if( pOldDS )
@@ -476,8 +474,9 @@ void MyRenderShadows()
 
 	//-------------------------------------------
 	// blur
+	// doesn't look so good now
 
-	// directional
+	/*
 	static int NumOfBlurPasses = 0;
 
 	g_pShadowEffect->SetTechnique("blur5x5");
@@ -497,7 +496,7 @@ void MyRenderShadows()
 	g_pShadowEffect->End();
 
 	// point ???
-
+	*/
 
 	// return surface
 	g_pd3dDevice->SetRenderTarget(0, oldsurface);
@@ -511,7 +510,7 @@ Renders all shadow casters
 */
 void MyRenderShadowCasters(LPD3DXEFFECT effect)
 {
-	//draw sphere and plane
+	//draw sphere
 	D3DXMATRIXA16 matWorld;
 	D3DXMatrixIdentity(&matWorld);
 
@@ -519,7 +518,6 @@ void MyRenderShadowCasters(LPD3DXEFFECT effect)
 	effect->CommitChanges();
 
 	g_SphereObj.DrawPrimitive( g_pd3dDevice );
-	//g_PlaneObj.DrawPrimitive( g_pd3dDevice );
 }
 
 
@@ -528,6 +526,8 @@ void MyRenderShadowCasters(LPD3DXEFFECT effect)
 /*
 ==========================================================================
 Renders scene into cubemap
+
+Called before any of actual rendering. Renders surrounding into cubemap
 ==========================================================================
 */
 void MyRenderSceneIntoCubeMap()
@@ -592,8 +592,9 @@ void MyRenderSceneIntoCubeMap()
 
 /*
 =================================================================
+MyRenderFullscreen
+
 Draws texture on top of the screen.
-Useful for debug and else
 =================================================================
 */
 float* GetFullscreenQuad()
@@ -639,10 +640,11 @@ void MyRenderFullscreen(LPDIRECT3DTEXTURE9 texture)
 
 void MyRenderText()
 {
-    CDXUTTextHelper txtHelper( g_pFont, g_pTextSprite, 15 );
+    /*
+	CDXUTTextHelper txtHelper( g_pFont, g_pTextSprite, 15 );
 
     // Output statistics
-	/*
+	
 	txtHelper.Begin();
     txtHelper.SetInsertionPos( 5, 5 );
 	WCHAR* str = new WCHAR[256];
@@ -661,8 +663,7 @@ void MyFrameMove(float fElapsedTime)
 	g_Camera.Update( fElapsedTime );
 
 
-	//TODO: REMOVEE!!!!
-	//rotate directional light!!!
+	// Automatically rotate directional lights
 	static float time = 0;
 	time += 0.3f * fElapsedTime;
 	D3DXMATRIXA16 matRot;
@@ -681,6 +682,11 @@ void MyFrameMove(float fElapsedTime)
 }
 
 
+/*
+=====================================================================
+Destroy the scene.
+=====================================================================
+*/
 void MyDestroyScene()
 {
 	SAFE_RELEASE(quaddecl);
@@ -923,7 +929,8 @@ INT WINAPI wWinMain( HINSTANCE, HINSTANCE, LPWSTR, int )
     DXUTInit( true, true ); // Parse the command line and show msgboxes
     DXUTSetHotkeyHandling( true, true, true );  // handle the defaul hotkeys
     DXUTCreateWindow( L"BilliardBalls" );
-    DXUTCreateDevice( true, 1280, 768 );
+
+	DXUTCreateDevice( true, 1280, 768 );
 
     // Pass control to DXUT for handling the message pump and 
     // dispatching render calls. DXUT will call your FrameMove 
@@ -1278,7 +1285,7 @@ void CALLBACK OnGUIEvent( UINT nEvent, int nControlID, CDXUTControl* pControl, v
 
     switch( nControlID )
     {
-
+		//???
     }
 }
 

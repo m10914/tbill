@@ -15,7 +15,7 @@ Special class for easy orbit camera.
 class CCamera
 {
 public:
-	CCamera(): distance(10), angPhi(0), angTheta(0), bLMBDown(false) {};
+	CCamera(): distance(10), angPhi(1.3f), angTheta(1.2f), bLMBDown(false) {};
 	~CCamera() {};
 
 	void Update(float fElapsedTime);
