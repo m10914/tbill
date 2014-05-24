@@ -66,6 +66,9 @@
     <ClCompile Include="Lights.cpp">
       <Filter>Lights</Filter>
     </ClCompile>
+    <ClCompile Include="CCamera.cpp">
+      <Filter>Camera</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="DXUT\Optional\directx.ico">

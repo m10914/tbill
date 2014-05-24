@@ -391,6 +391,7 @@
     <None Include="DXUT\Optional\directx.ico" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="CCamera.cpp" />
     <ClCompile Include="CSphere.cpp" />
     <ClCompile Include="DXUT\DXUT.cpp" />
     <ClCompile Include="DXUT\DXUTcamera.cpp" />

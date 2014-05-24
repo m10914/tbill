@@ -21,22 +21,22 @@ CPlanePrimitive::~CPlanePrimitive()
 }
 
 
-HRESULT CPlanePrimitive::Create( IDirect3DDevice9* pd3dDevice, D3DXVECTOR3 position, D3DXVECTOR2 size)
+HRESULT CPlanePrimitive::Create( IDirect3DDevice9* pd3dDevice, D3DXVECTOR3 position, D3DXVECTOR2 size, D3DXVECTOR2 tiling)
 {
 	HRESULT hr;
 
 	this->position = position;
 	this->size = size;
-
+	this->tiling = tiling;
 
 	//----------------------------
 	// Create vertex buffer
 
 	VERTEX m_Vertices[4] = {
-		VERTEX(position + D3DXVECTOR3(-size.x/2, 0, -size.y/2), D3DXVECTOR3(0,1,0), D3DXVECTOR2(0,0)),
-		VERTEX(position + D3DXVECTOR3(-size.x/2, 0, size.y/2), D3DXVECTOR3(0,1,0), D3DXVECTOR2(0,1)),
-		VERTEX(position + D3DXVECTOR3(size.x/2, 0, size.y/2), D3DXVECTOR3(0,1,0), D3DXVECTOR2(1,1)),
-		VERTEX(position + D3DXVECTOR3(size.x/2, 0, -size.y/2), D3DXVECTOR3(0,1,0), D3DXVECTOR2(1,0)) };
+		VERTEX(position + D3DXVECTOR3(-size.x/2, 0, -size.y/2), D3DXVECTOR3(0,1,0), D3DXVECTOR2(0, 0)),
+		VERTEX(position + D3DXVECTOR3(-size.x/2, 0, size.y/2), D3DXVECTOR3(0,1,0), D3DXVECTOR2(0, tiling.y)),
+		VERTEX(position + D3DXVECTOR3(size.x/2, 0, size.y/2), D3DXVECTOR3(0,1,0), D3DXVECTOR2(tiling.x, tiling.y)),
+		VERTEX(position + D3DXVECTOR3(size.x/2, 0, -size.y/2), D3DXVECTOR3(0,1,0), D3DXVECTOR2(tiling.x, 0)) };
 
 	if( FAILED(pd3dDevice->CreateVertexBuffer(4 * sizeof(VERTEX), D3DUSAGE_WRITEONLY,
 		VERTEX::FVF, D3DPOOL_MANAGED, &m_VertexBuffer, NULL)))

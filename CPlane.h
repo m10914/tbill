@@ -17,7 +17,7 @@ public:
 	CPlanePrimitive();
 	~CPlanePrimitive();
 
-	HRESULT Create( IDirect3DDevice9* pd3dDevice, D3DXVECTOR3 position, D3DXVECTOR2 size);
+	HRESULT Create( IDirect3DDevice9* pd3dDevice, D3DXVECTOR3 position, D3DXVECTOR2 size, D3DXVECTOR2 tiling);
     void    Destroy();
 	void	DrawPrimitive( IDirect3DDevice9* pd3dDevice );
 
@@ -25,6 +25,7 @@ public:
 protected:
 	D3DXVECTOR3 position;
 	D3DXVECTOR2 size;
+	D3DXVECTOR2 tiling;
 
 	LPDIRECT3DVERTEXBUFFER9 m_VertexBuffer;
 	LPDIRECT3DINDEXBUFFER9 m_IndexBuffer;

@@ -18,6 +18,7 @@ Based on MeshFromOBJ sample from DirectX SDK 2009.
 #pragma warning(disable: 4995)
 #include "resource.h"
 
+#include "CCamera.h"
 #include "Formats.h"
 #include "CPlane.h"
 #include "CSphere.h"
@@ -35,7 +36,7 @@ Based on MeshFromOBJ sample from DirectX SDK 2009.
 //--------------------------------------------------------------------------------------
 ID3DXFont*                  g_pFont = NULL;          // Font for drawing text
 ID3DXSprite*                g_pTextSprite = NULL;    // Sprite for batching draw text calls
-CModelViewerCamera          g_Camera;                // A model viewing camera
+CCamera						g_Camera;                // A model viewing camera
 CDXUTDialogResourceManager  g_DialogResourceManager; // manager for shared resources of dialogs
 CD3DSettingsDlg             g_SettingsDlg;          // Device settings dialog
 CDXUTDialog                 g_HUD;                   // dialog for standard controls
@@ -57,6 +58,7 @@ CSpherePrimitive g_SphereObj;
 CPlanePrimitive g_OneWall;
 
 IDirect3DTexture9* g_PlaneTexture;
+IDirect3DTexture9* g_PlaneBumpTexture;
 IDirect3DTexture9* g_SphereTexture;
 
 IDirect3DTexture9** g_SkyBoxTextures;
@@ -215,14 +217,15 @@ void MyCreateScene()
 
 
 	//create plane
-	g_PlaneObj.Create(g_pd3dDevice, D3DXVECTOR3(0,-10,0), D3DXVECTOR2(150,150));
+	g_PlaneObj.Create(g_pd3dDevice, D3DXVECTOR3(0,-10,0), D3DXVECTOR2(150,150), D3DXVECTOR2(2,2));
 	g_SphereObj.Create(g_pd3dDevice, D3DXVECTOR3(0,0,0), 10, 100, 100);
 
-	g_OneWall.Create(g_pd3dDevice, D3DXVECTOR3(0,0,0), D3DXVECTOR2(2,2));
+	g_OneWall.Create(g_pd3dDevice, D3DXVECTOR3(0,0,0), D3DXVECTOR2(2,2), D3DXVECTOR2(1,1));
 
 	//create textures
 	V( D3DXCreateTextureFromFile( g_pd3dDevice, L"Assets/ball_albedo.png", &g_SphereTexture ) );
-	V( D3DXCreateTextureFromFile( g_pd3dDevice, L"Assets/pooltable.png", &g_PlaneTexture ) );	
+	V( D3DXCreateTextureFromFile( g_pd3dDevice, L"Assets/table_normal.jpg", &g_PlaneBumpTexture ) );
+	V( D3DXCreateTextureFromFile( g_pd3dDevice, L"Assets/table_diff.jpg", &g_PlaneTexture ) );	
 
 	g_SkyBoxTextures = new LPDIRECT3DTEXTURE9[6];
 	V( D3DXCreateTextureFromFile( g_pd3dDevice, L"Assets/skybox/front.jpg", &(g_SkyBoxTextures[0]) ) );
@@ -246,6 +249,10 @@ void MyCreateScene()
 	//create shadow maps
 	for( int i = 0; i < NUM_DIRECTIONAL_LIGHTS; ++i )
 		directionallights[i].CreateShadowMap(g_pd3dDevice, DXLight::Dynamic, 512);
+
+	//setup camera variables
+	g_Camera.SetDistance(100);
+	g_Camera.SetTarget(D3DXVECTOR3(0,0,0));
 }
 
 
@@ -271,7 +278,7 @@ void MyCreateRenderTargets()
 	V(g_pd3dDevice->CreateTexture(screenSize.x, screenSize.y, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8, D3DPOOL_DEFAULT, &g_RTAlbedo, NULL));
 	V(g_pd3dDevice->CreateTexture(screenSize.x, screenSize.y, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A16B16G16R16F, D3DPOOL_DEFAULT, &g_RTScene, NULL));
 	V(g_pd3dDevice->CreateTexture(screenSize.x, screenSize.y, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A16B16G16R16F, D3DPOOL_DEFAULT, &g_RTNormals, NULL));
-	V(g_pd3dDevice->CreateTexture(screenSize.x, screenSize.y, 1, D3DUSAGE_RENDERTARGET, D3DFMT_R32F, D3DPOOL_DEFAULT, &g_RTDepth, NULL));
+	V(g_pd3dDevice->CreateTexture(screenSize.x, screenSize.y, 1, D3DUSAGE_RENDERTARGET, D3DFMT_G32R32F, D3DPOOL_DEFAULT, &g_RTDepth, NULL));
 
 	//get surfaces
 	V(g_RTAlbedo->GetSurfaceLevel(0, &g_SurfaceAlbedo));
@@ -421,6 +428,7 @@ void MyRenderScene()
 	MyRenderRoom();
 	
 	MyRenderFullscreen(g_RTScene);
+	//MyRenderFullscreen(g_RTNormals);
 
 	//set scene rt
 	if( pOldDS )
@@ -650,7 +658,7 @@ void MyRenderText()
 
 void MyFrameMove(float fElapsedTime)
 {
-	g_Camera.FrameMove( fElapsedTime );
+	g_Camera.Update( fElapsedTime );
 
 
 	//TODO: REMOVEE!!!!
@@ -682,6 +690,7 @@ void MyDestroyScene()
 	g_OneWall.Destroy();
 
 	SAFE_RELEASE( g_PlaneTexture );
+	SAFE_RELEASE( g_PlaneBumpTexture );
 	SAFE_RELEASE( g_SphereTexture );
 
 	for(int i=0; i < 6; i++)
@@ -729,6 +738,7 @@ void MyRenderPlane()
 	g_pd3dDevice->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
 
 	V( g_pEffect->SetTexture( g_hDiffTexture, g_PlaneTexture));
+	V( g_pEffect->SetTexture( g_hBumpTexture, g_PlaneBumpTexture));
 	V( g_pEffect->SetMatrix( g_hWorld, &mWorld));
 	V( g_pEffect->SetMatrix( g_hWorldInv, &mWorldInv));
 
@@ -1073,12 +1083,6 @@ HRESULT CALLBACK OnCreateDevice( IDirect3DDevice9* pd3dDevice, const D3DSURFACE_
 	LoadShaderFromFile(L"BaseShaders.fx", &g_pEffect);
 	LoadShaderFromFile(L"ShadowMaps.fx", &g_pShadowEffect);
 
-
-    // Setup the camera's view parameters
-    D3DXVECTOR3 vecEye( 32.2f, 20.5f, 0.0f );
-    D3DXVECTOR3 vecAt ( 0.0f, 0.0f, -0.0f );
-    g_Camera.SetViewParams( &vecEye, &vecAt );
-
     return S_OK;
 }
 
@@ -1161,8 +1165,6 @@ HRESULT CALLBACK OnResetDevice( IDirect3DDevice9* pd3dDevice,
     // Setup the camera's projection parameters
     float fAspectRatio = pBackBufferSurfaceDesc->Width / ( FLOAT )pBackBufferSurfaceDesc->Height;
     g_Camera.SetProjParams( D3DX_PI / 4, fAspectRatio, 0.1f, 1000.0f );
-    g_Camera.SetWindow( pBackBufferSurfaceDesc->Width, pBackBufferSurfaceDesc->Height );
-
 
     g_HUD.SetLocation( pBackBufferSurfaceDesc->Width - 170, 0 );
     g_HUD.SetSize( 170, 170 );

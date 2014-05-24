@@ -55,8 +55,8 @@ sampler DiffTextureSampler = sampler_state
     MinFilter = NONE;
     MagFilter = NONE;
 
-	AddressU = clamp;
-	AddressV = clamp;
+	AddressU = wrap;
+	AddressV = wrap;
 };
 sampler BumpTextureSampler = sampler_state
 {
@@ -65,8 +65,8 @@ sampler BumpTextureSampler = sampler_state
     MinFilter = NONE;
     MagFilter = NONE;
 
-	AddressU = clamp;
-	AddressV = clamp;
+	AddressU = wrap;
+	AddressV = wrap;
 };
 sampler SpecTextureSampler = sampler_state
 {
@@ -311,7 +311,7 @@ void DeferredEnvFragmentShader( float2 vTexCoord: TEXCOORD0,
 
 
 	//calulate depth
-	vColorDepth = float4(vDepth.x / vDepth.y, 0, 0, 1);
+	vColorDepth = float4(vDepth.x / vDepth.y, 1, 0, 1);
 	
 	//calculate normal
 	vColorNormals = float4(vInvNormal, 1);
@@ -367,8 +367,10 @@ struct DEF_VS_OUTPUT
 {
 	float4 vPosProj: POSITION;
 	float2 vTexCoordOut: TEXCOORD0;
-	float3 vInvNormal : TEXCOORD1;
-	float2 vDepth : TEXCOORD2;
+	float3 vWorldNormal : TEXCOORD1;
+	float3 vWorldTangent : TEXCOORD2;
+	float3 vWorldBinormal : TEXCOORD3;
+	float2 vDepth : TEXCOORD4;
 };
 
 DEF_VS_OUTPUT DeferredVertShader(VS_INPUT IN)
@@ -379,15 +381,20 @@ DEF_VS_OUTPUT DeferredVertShader(VS_INPUT IN)
     OUT.vPosProj = mul( OUT.vPosProj, g_mViewProj );
 	OUT.vTexCoordOut = IN.vTexCoordIn;
 
-	OUT.vInvNormal = mul(g_mWorldInv, float4(IN.vNormalObject, 0)).xyz;
+	OUT.vWorldNormal = mul(g_mWorldInv, float4(IN.vNormalObject, 0)).xyz;
+	OUT.vWorldBinormal = cross(float3(1,0,0), OUT.vWorldNormal);
+	OUT.vWorldTangent = cross(OUT.vWorldNormal, OUT.vWorldBinormal);
+
 	OUT.vDepth = OUT.vPosProj.zw;
 
 	return OUT;
 }
 
 void DeferredFragmentShader( float2 vTexCoord: TEXCOORD0,
-							float3 vInvNormal : TEXCOORD1,
-							float2 vDepth : TEXCOORD2,
+							float3 vWorldNormal : TEXCOORD1,
+							float3 vWorldTangent : TEXCOORD2,
+							float3 vWorldBinormal : TEXCOORD3,
+							float2 vDepth : TEXCOORD4,
                out float4 vColorAlbedo: COLOR0,
                out float4 vColorNormals: COLOR1,
                out float4 vColorDepth: COLOR2 )
@@ -395,8 +402,13 @@ void DeferredFragmentShader( float2 vTexCoord: TEXCOORD0,
 
 	vColorAlbedo = tex2D( DiffTextureSampler, vTexCoord );
 	vColorAlbedo.a = 1;
-	vColorDepth = float4(vDepth.x / vDepth.y, 0, 0, 1);
-	vColorNormals = float4(vInvNormal, 1);
+	vColorDepth = float4(vDepth.x / vDepth.y, 0.3, 0, 1);
+
+	//vColorNormals = float4(vInvNormal, 1);
+	float3 normTex = tex2D( BumpTextureSampler, vTexCoord ) * 2 - 1;
+	float3x3 tbn = { vWorldTangent, vWorldBinormal, vWorldNormal };
+	vColorNormals.rgb = normalize(mul(tbn, float4(normTex.rgb, 0)));
+	vColorNormals.a = 1;
 }
 
 
@@ -414,13 +426,14 @@ void DeferredDirectionalFragmentShader(
 {
 	float4 scene = tex2D(DiffTextureSampler, tex);
 	float4 normd = tex2D(BumpTextureSampler, tex);
+	float4 depth = tex2D(SpecTextureSampler, tex);
 	float2 irrad;
 
-	normd.w = tex2D(SpecTextureSampler, tex).r;
+	normd.w = depth.r;
 	irrad = FuncDirectionalLight(tex, normd);
 
 	scene.rgb = pow(scene.rgb, 2.2f);
-	color.rgb = scene.rgb * g_vLightColor.rgb * irrad.x + g_vLightColor.rgb * irrad.y;
+	color.rgb = scene.rgb * g_vLightColor.rgb * irrad.x + g_vLightColor.rgb * irrad.y * depth.g;
 	color.a = scene.a;
 }
 
@@ -498,7 +511,6 @@ technique Plain
 	}
 }
 
-
 technique EnvMap
 {
 	pass P0
@@ -507,7 +519,6 @@ technique EnvMap
         PixelShader = compile ps_2_0 EMFragmentShader(); 
 	}
 }
-
 
 technique DeferredGBuffer
 {
@@ -526,7 +537,6 @@ technique DeferredGBufferEnv
         PixelShader = compile ps_2_0 DeferredEnvFragmentShader(); 
 	}
 }
-
 
 technique DeferredDirectional
 {

@@ -1,4 +1,4 @@
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(420,14): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(286,2): error X4000: variable 'OUT' used without having been completely initialized
-C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(523,18): ID3DXEffectCompiler::CompileEffect: There was an error compiling expression
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(435,14): warning X3571: pow(f, e) will not work for negative f, use abs(f) or conditionally handle negative values if you expect them
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(436,12): error X4000: variable 'color' used without having been completely initialized
+C:\Users\Damon\Desktop\SFMR\practical work test\Program\BaseShaders.fx(549,17): ID3DXEffectCompiler::CompileEffect: There was an error compiling expression
 ID3DXEffectCompiler: Compilation failed
