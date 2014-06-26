@@ -71,7 +71,6 @@ LPDIRECT3DSURFACE9 g_SurfaceNormal = NULL;
 LPDIRECT3DSURFACE9 g_SurfaceDepth = NULL;
 LPDIRECT3DSURFACE9 g_SurfaceScene = NULL;
 
-LPDIRECT3DSURFACE9 g_pDepthStencil = NULL;
 
 // light sources
 DXDirectionalLight directionallights[] =
@@ -282,17 +281,6 @@ void MyCreateRenderTargets()
 	V(g_RTNormals->GetSurfaceLevel(0, &g_SurfaceNormal));
 	V(g_RTDepth->GetSurfaceLevel(0, &g_SurfaceDepth));
 	V(g_RTScene->GetSurfaceLevel(0, &g_SurfaceScene));
-
-	//create depth-stencil surface
-	DXUTDeviceSettings d3dSettings = DXUTGetDeviceSettings();
-    V( g_pd3dDevice->CreateDepthStencilSurface( screenSize.x,
-                                                screenSize.y,
-                                                D3DFMT_D24S8,
-                                                D3DMULTISAMPLE_NONE,
-                                                0,
-                                                TRUE,
-                                                &g_pDepthStencil,
-                                                NULL ) );
 }
 
 
@@ -307,10 +295,6 @@ Launches all rendering techniques in proper order.
 void MyRenderScene()
 {
 	HRESULT hr;
-
-	LPDIRECT3DSURFACE9 pOldDS = NULL;
-    if( SUCCEEDED( g_pd3dDevice->GetDepthStencilSurface( &pOldDS ) ) )
-		g_pd3dDevice->SetDepthStencilSurface( g_pDepthStencil );
 
 
 	//-------------------------------------------------------------
@@ -427,13 +411,6 @@ void MyRenderScene()
 	//maybe render lights as spheres???
 
 	MyRenderFullscreen(g_RTScene);
-
-	//set scene rt
-	if( pOldDS )
-    {
-        g_pd3dDevice->SetDepthStencilSurface( pOldDS );
-        pOldDS->Release();
-    }
 
 	return;
 }
@@ -716,7 +693,6 @@ void MyDestroyScene()
 	SAFE_RELEASE(g_SurfaceNormal);
 	SAFE_RELEASE(g_SurfaceScene);
 
-	SAFE_RELEASE(g_pDepthStencil);
 
 	for( int i = 0; i < NUM_DIRECTIONAL_LIGHTS; ++i )
 		directionallights[i].~DXDirectionalLight(); //cal destructors manually

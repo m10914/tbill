@@ -2939,6 +2939,8 @@ HRESULT DXUTCreate3DEnvironment9( IDirect3DDevice9* pd3dDeviceFromApp )
         // Try to create the device with the chosen settings
         IDirect3D9* pD3D = DXUTGetD3D9Object();
         assert( pD3D != NULL );
+		pNewDeviceSettings->d3d9.pp.MultiSampleType = D3DMULTISAMPLE_NONE;
+		pNewDeviceSettings->d3d9.pp.MultiSampleQuality = 0;
         hr = pD3D->CreateDevice( pNewDeviceSettings->d3d9.AdapterOrdinal, pNewDeviceSettings->d3d9.DeviceType,
                                  DXUTGetHWNDFocus(), pNewDeviceSettings->d3d9.BehaviorFlags,
                                  &pNewDeviceSettings->d3d9.pp, &pd3dDevice );
